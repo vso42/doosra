@@ -35,6 +35,7 @@ KINDS = {
     "at_least": ("Band not reached at the largest verified size", "≥ "),
     "below_min": ("The smallest verified size already exceeds the band", "< "),
     "modeled": ("Largest tested full-input model size inside the band; contract execution unverified", ""),
+    "prior_modeled": ("Earlier model estimate; awaiting corrected rerun; contract execution unverified", ""),
 }
 LEGEND = " Hover a figure for how it was measured; ≥ marks a band not reached at the largest size tested."
 MODEL_LEGEND = (" Figures are the largest passing full-input model sizes tested at each recorded block."
@@ -203,9 +204,10 @@ def load_bands(pairs, path, chain_snapshots=None):
             if figure.get("kind") not in KINDS:
                 raise ValueError(f"{where}: kind must be one of {sorted(KINDS)}, got {figure.get('kind')!r}")
             amount, value = number(figure.get("amount"), where + " amount"), number(figure.get("usd"), where + " usd")
-            if previous and (amount < previous[0] or value < previous[1]):
+            mixed_prior = previous and ((figure["kind"] == "prior_modeled") != (previous[2] == "prior_modeled"))
+            if previous and not mixed_prior and (amount < previous[0] or value < previous[1]):
                 raise ValueError(f"{where}: amount {amount} / usd {value} below the narrower band's {previous}")
-            previous = (amount, value)
+            previous = (amount, value, figure["kind"])
             label, prefix = KINDS[figure["kind"]]
             if figure.get("validation_level") == "per_pool_native_quotes_and_shared_raw_prefix":
                 label += " · Per-pool contract quotes and token balances checked; transaction and gas validation pending"
@@ -319,12 +321,45 @@ def fill(template, values):
 
 
 def validate_newer_publication(bands_path, results_path):
-    """Keep older numerical outputs out of the active newer-only publication."""
+    """Check corrected quotes and explicitly pinned earlier public estimates."""
     bands = json.loads(Path(bands_path).read_bytes())
     results = json.loads(Path(results_path).read_bytes())
-    if results.get("publication_policy") != "confirmed_newer_only":
-        raise ValueError("Website publication requires confirmed newer solver results only")
+    publication_policy = results.get("publication_policy")
+    if publication_policy not in ("confirmed_newer_only", "corrected_with_prior_estimates"):
+        raise ValueError("Unknown website quote publication policy")
     expected_pairs = set()
+    prior = None
+    if publication_policy == "corrected_with_prior_estimates":
+        ref = results["prior_publication"]
+        path = Path(ref["path"])
+        path = path if path.is_absolute() else ROOT.parent / path
+        staged = Path(results_path).parent / path.name
+        if staged.exists():
+            path = staged
+        raw = path.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != ref["sha256"]:
+            raise ValueError("Earlier public estimates differ from their pinned publication")
+        prior = json.loads(raw)
+    for pair_id, entry in bands["pairs"].items():
+        for band, figure in entry.get("bands", {}).items():
+            if figure.get("kind") != "prior_modeled":
+                if pair_id not in results["pairs"]:
+                    raise ValueError(f"Pair {pair_id}: updated figure has no corrected solver evidence")
+                continue
+            if prior is None:
+                raise ValueError("Earlier estimates require an explicitly pinned prior publication")
+            if (figure.get("native_validated") is not False
+                    or figure.get("validation_level") != "earlier_public_model_awaiting_corrected_rerun"
+                    or any(field in figure for field in ("amount_in_raw", "amount_out_raw"))):
+                raise ValueError(f"Pair {pair_id}: earlier estimate must retain its explicit pending label")
+            previous = prior["pairs"].get(pair_id, {}).get("bands", {}).get(band)
+            if previous is None or any(figure[field] != previous[field] for field in ("amount", "usd")):
+                raise ValueError(f"Pair {pair_id}: earlier estimate differs from the actual public figure")
+            prior_pair = prior["pairs"][pair_id]
+            for field in ("block", "block_timestamp_utc"):
+                if entry.get(field) != prior_pair.get(field):
+                    raise ValueError(f"Pair {pair_id}: earlier estimate uses another snapshot")
+            expected_pairs.add(pair_id)
     for pair_id, pair in results["pairs"].items():
         points = {}
         for point in pair["cases"]:
@@ -336,7 +371,8 @@ def validate_newer_publication(bands_path, results_path):
         selected = {band: point for band, point in pair["model_bands"].items() if point is not None}
         if selected:
             expected_pairs.add(pair_id)
-        displayed = bands["pairs"].get(pair_id, {}).get("bands", {})
+        displayed = {band: figure for band, figure in bands["pairs"].get(pair_id, {}).get("bands", {}).items()
+                     if figure.get("kind") != "prior_modeled"}
         if set(displayed) != set(selected):
             raise ValueError(f"Pair {pair_id}: selected newer bands differ from website inputs")
         for band, point in selected.items():
@@ -378,10 +414,10 @@ def build(bands_path=None, out=OUT):
     policy_path = DATA / "solver-publication-policy.json"
     if canonical_publication and policy_path.exists():
         policy = json.loads(policy_path.read_bytes())
-        if policy.get("publication_policy") != "confirmed_newer_only":
+        if policy.get("publication_policy") not in ("confirmed_newer_only", "corrected_with_prior_estimates"):
             raise ValueError("Unknown website solver publication policy")
-        if not publication_manifest.exists() or manifest.get("publication_policy") != "confirmed_newer_only":
-            raise ValueError("Older solver publications cannot replace the newer-only website inputs")
+        if not publication_manifest.exists() or manifest.get("publication_policy") != policy["publication_policy"]:
+            raise ValueError("The quote manifest differs from the active publication policy")
         validate_newer_publication(bands_path, DATA / source_names["solver-results.json"])
     listing, chains, pairs = load_pairs()
     snapshots = load_chain_snapshots()
