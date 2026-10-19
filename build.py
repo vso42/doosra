@@ -291,7 +291,10 @@ def group(chain, pairs, figures, snapshot=None):
     name, slug = chain["name"], chain["slug"]
     searchable = norm(name) if norm(name).replace(" ", "") == slug else norm(f"{name} {slug}")
     paged = len(rows) > PAGE_SIZE
-    title = f' title="{esc("Recorded pool state" + snapshot_title(snapshot))}"' if snapshot and snapshot.get("block") else ""
+    if snapshot and snapshot.get("mixed_blocks"):
+        title = ' title="Multiple recorded blocks; hover a figure for its block and timestamp"'
+    else:
+        title = f' title="{esc("Recorded pool state" + snapshot_title(snapshot))}"' if snapshot and snapshot.get("block") else ""
     note = ('<span class="chain-note">Still struggling on bin counting; will provide soon.</span>'
             if slug == "avalanche" else "")
     return (f'<div class="g" role="rowgroup" data-chain="{esc(slug)}" data-name="{esc(searchable)}" data-n="{len(rows)}">'
@@ -422,6 +425,14 @@ def build(bands_path=None, out=OUT):
     listing, chains, pairs = load_pairs()
     snapshots = load_chain_snapshots()
     updated, figures, unknown, published = load_bands(pairs, bands_path, snapshots)
+    # A partial publication can legitimately contain several snapshots on one chain.
+    # Each figure retains its own time; the chain header must not imply a single block.
+    display_snapshots = dict(snapshots)
+    for chain in chains:
+        blocks = {entry["block"] for pid, entry in published.items()
+                  if pairs[pid]["chain_id"] == chain["chain_id"] and entry["block"] is not None}
+        if len(blocks) > 1:
+            display_snapshots[chain["chain_id"]] = {"mixed_blocks": True}
     modeled = any(figure.get("kind") == "modeled" for entry in json.loads(bands_path.read_text()).get("pairs", {}).values()
                   for figure in entry.get("bands", {}).values())
     faces, preloads, font_files = font_faces()
@@ -454,7 +465,7 @@ def build(bands_path=None, out=OUT):
         "figure_label": "in USD · model estimates" if modeled else "in USD",
         "default_band": str(DEFAULT_BAND),
         "header": header,
-        "groups": "".join(group(chain, by_chain[chain["slug"]], figures, snapshots.get(chain["chain_id"])) for chain in chains),
+        "groups": "".join(group(chain, by_chain[chain["slug"]], figures, display_snapshots.get(chain["chain_id"])) for chain in chains),
         "legend": (MODEL_LEGEND if modeled else LEGEND) if figures else "",
         "js": (SRC / "app.js").read_text().strip(),
     })
