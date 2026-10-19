@@ -98,9 +98,10 @@ def test_text_is_escaped_and_the_input_is_left_alone():
     assert data == before
 
 
-def test_note_names_the_quote_blocks_and_the_gap():
+def test_no_heading_or_note_above_the_tables():
     page, _ = build.comparison(records(), CHAINS)
-    assert "saved at blocks 26,218,345–26,218,367, about 8 hours after ours," in page
+    assert page.startswith('<section class="compare" aria-label="Aggregator quotes"><div class="compare-pair"')
+    assert "<h2" not in page and "<p" not in page and "similar sizes" not in page
 
 
 def test_published_data_is_only_the_figures_file(tmp_path):

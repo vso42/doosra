@@ -350,19 +350,11 @@ def amount_text(value):
     return exact, f"{value:,.2f}" if value >= 1 else significant(float(value), 4)
 
 
-def parse_time(text):
-    try:
-        when = datetime.fromisoformat(text)
-    except (TypeError, ValueError):
-        return None
-    return when.astimezone(timezone.utc) if when.tzinfo else None
-
-
 def comparison(records, chain_names):
     """Our model quotes beside the aggregator quotes liqind saved for about the same input: one table per pair with at
     least one usable saved quote, aggregators that never quoted it left out. Only full-input quotes of ours count.
     Returns the section's HTML and the same numbers for docs/data/figures.json."""
-    tables, entries, their_blocks, our_times, their_times = [], [], [], [], []
+    tables, entries = [], []
     for key in sorted(records, key=lambda k: int(k) if k.isdigit() else -1):
         pair = records[key]
         collateral, debt = str(pair.get("collateral", "")), str(pair.get("debt", ""))
@@ -396,7 +388,6 @@ def comparison(records, chain_names):
         for size, (quote, amount_in, amount_out, slip), theirs in rows:
             exact_in, shown_in = amount_text(amount_in)
             exact_out, shown_out = amount_text(amount_out)
-            our_times.append(parse_time(quote.get("block_timestamp_utc") or pair.get("block_timestamp_utc")))
             cells = [f'<td><span title="{esc(exact_in + " " + collateral)}">{esc(shown_in + " " + collateral)}</span>'
                      f'<small>{esc(usd(float(size)))}</small></td>',
                      f'<td title="{esc(exact_out + " " + debt)}">{slip:.2f}%<small>{esc(shown_out + " " + debt)}</small></td>']
@@ -409,8 +400,6 @@ def comparison(records, chain_names):
                     quotes[name] = None
                     continue
                 block = item.get("quote_block") if type(item.get("quote_block")) is int else None
-                their_blocks += [block] if block else []
-                their_times.append(parse_time(item.get("quoted_at")))
                 exact_their_in, _ = amount_text(their_in)
                 exact_their_out, shown_their_out = amount_text(their_out)
                 where = f" at block {block:,}" if block else ""
@@ -430,17 +419,8 @@ def comparison(records, chain_names):
                         "rows": numbers})
     if not tables:
         return "", []
-    note = "Each figure is the slippage, with the amount received below it."
-    if their_blocks:
-        low, high = min(their_blocks), max(their_blocks)
-        span = f"block {low:,}" if low == high else f"blocks {low:,}–{high:,}"
-        known_ours, known_theirs = [t for t in our_times if t], [t for t in their_times if t]
-        hours = round((min(known_theirs) - max(known_ours)).total_seconds() / 3600) if known_ours and known_theirs else 0
-        later = f", about {hours} hours after ours," if hours >= 1 else ""
-        note += (f" The aggregator quotes are the ones liqind saved at {span}{later} for nearly the same inputs,"
-                 " and slippage uses the same USD prices for every quote of a pair.")
-    return ('<section class="compare" aria-labelledby="compare-title"><h2 id="compare-title">Aggregator quotes at '
-            f'similar sizes</h2><p class="compare-note">{esc(note)}</p>' + "".join(tables) + "</section>"), entries
+    # no visible heading or note above the tables; the label is for screen readers
+    return ('<section class="compare" aria-label="Aggregator quotes">' + "".join(tables) + "</section>"), entries
 
 
 def build(bands_path=None, out=OUT):

@@ -128,7 +128,8 @@ try {
       pairs: [...document.querySelectorAll(".compare-pair")].map((p) => ({ id: p.dataset.pair, title: p.querySelector("h3").textContent,
         head: [...p.querySelectorAll("thead th")].map((c) => c.textContent),
         cells: [...p.querySelectorAll("tbody tr")].map((r) => [...r.children].map(cell)) })),
-      note: document.querySelector(".compare-note")?.textContent || "",
+      extras: [...document.querySelectorAll(".compare > :not(.compare-pair)")].map((e) => e.outerHTML.slice(0, 80)),
+      oldHeading: document.body.textContent.includes("Aggregator quotes at similar sizes"),
       requests: performance.getEntriesByType("resource").map((e) => e.name).filter((n) => n.includes("/data/")),
       downloads: document.querySelectorAll('a[download],a[href*="/data/"],a[href$=".json"],a[href$=".csv"]').length,
       header: document.querySelector("#depth-title").textContent,
@@ -153,8 +154,7 @@ try {
     check(`pair ${want.id}: ${want.cells.length} rows, every slippage, amount and tooltip as saved`,
       got.cells.length === want.cells.length && !bad.length, bad.slice(0, 2));
   }
-  check("note names the quote blocks and says they are about the same inputs",
-    /saved at blocks? [\d,]+(–[\d,]+)?, about \d+ hours after ours, for nearly the same inputs/.test(state.note), state.note);
+  check("no heading or note above the aggregator tables", !state.extras.length && !state.oldHeading, state.extras);
   check("band figures labeled model estimates", state.header.includes("model estimates")
     && state.modelTitle.includes("contract execution unverified"), { header: state.header, title: state.modelTitle });
   check("no tooltip shows a hash", !state.hashTitles.length, state.hashTitles);
