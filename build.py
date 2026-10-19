@@ -2,7 +2,7 @@
 """Build the static site into docs/ for GitHub Pages (Settings > Pages > Deploy from a branch > main, /docs).
 
 docs/index.html is the whole page in one file: every liqind pair of data/pairs.json (scripts/fetch_liqind_pairs.py) as a
-pre-rendered row, the published execution amounts of data/bands.json in the band columns, src/style.css and src/app.js
+pre-rendered row, the model amounts pinned by data/current-publication.json in the band columns, src/style.css and src/app.js
 inlined. Each chain shows PAGE_SIZE pairs per page: the first page is visible in the HTML with its pager, app.js turns
 the pages. The fonts listed in fonts/fonts.json (scripts/fetch_fonts.py) are copied to docs/fonts/.
 data/ stays local: besides the page, docs/ gets only data/figures.json, the numbers the page shows.
@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 import gzip
 import hashlib
 import html
+import importlib.util
 import json
 import math
 from pathlib import Path
@@ -21,6 +22,9 @@ import shutil
 
 ROOT = Path(__file__).resolve().parent
 SRC, DATA, FONTS, OUT = ROOT / "src", ROOT / "data", ROOT / "fonts", ROOT / "docs"
+_publication_spec = importlib.util.spec_from_file_location("doosra_publication", ROOT / "publication.py")
+publication = importlib.util.module_from_spec(_publication_spec)
+_publication_spec.loader.exec_module(publication)
 BANDS = [1, 2, 3, 5, 10]  # slippage bands (percent): one chip and one column each
 DEFAULT_BAND = 2
 PAGE_SIZE = 10  # pairs per page within a chain
@@ -392,38 +396,50 @@ def validate_newer_publication(bands_path, results_path):
 
 
 def build(bands_path=None, out=OUT):
+    with publication.locked():
+        return _build(bands_path, out)
+
+
+def _build(bands_path=None, out=OUT):
     """Write the site for the bands file into `out`; returns what main() reports. tests/check_build.py calls it with
     a synthetic bands file and an output folder under .preview/."""
     if DEFAULT_BAND not in BANDS:
         raise ValueError("DEFAULT_BAND must be one of BANDS")
+    source_data = publication.active_directory()
+    active_bands = source_data / "bands.json"
     if bands_path is None:
-        bands_path = DATA / "bands.json"
+        bands_path = active_bands
     bands_path = Path(bands_path)
-    canonical_publication = bands_path.resolve() == (DATA / "bands.json").resolve()
-    publication_manifest = DATA / "solver-publication-manifest.json"
+    canonical_publication = bands_path.resolve() == active_bands.resolve()
+    if (publication.pointer_token() is not None and Path(out).resolve() == OUT.resolve()
+            and not canonical_publication):
+        raise ValueError("Published docs must use data/current-publication.json; explicit inputs are for previews only")
+    if not canonical_publication:
+        source_data = bands_path.parent
+    publication_manifest = source_data / "solver-publication-manifest.json"
     source_names = {"bands.json": bands_path.name,
         "solver-results.json": "solver-results.json",
         "chain-snapshots.json": "chain-snapshots.json"}
     if canonical_publication and publication_manifest.exists():
         manifest = json.loads(publication_manifest.read_bytes())
         source_names.update(manifest.get("source_names", {}))
-        if (DATA / source_names["bands.json"]).resolve() != bands_path.resolve():
+        if (source_data / source_names["bands.json"]).resolve() != bands_path.resolve():
             raise ValueError("The publication manifest maps bands.json to another input file")
         for name in ("bands.json", "solver-results.json", "chain-snapshots.json"):
-            raw = (DATA / source_names[name]).read_bytes()
+            raw = (source_data / source_names[name]).read_bytes()
             recorded = manifest["files"][name]
             if hashlib.sha256(raw).hexdigest() != recorded["sha256"] or len(raw) != recorded["bytes"]:
                 raise ValueError(f"{name}: differs from the complete solver publication manifest; rerun the exporter")
-    policy_path = DATA / "solver-publication-policy.json"
+    policy_path = source_data / "solver-publication-policy.json"
     if canonical_publication and policy_path.exists():
         policy = json.loads(policy_path.read_bytes())
         if policy.get("publication_policy") not in ("confirmed_newer_only", "corrected_with_prior_estimates"):
             raise ValueError("Unknown website solver publication policy")
         if not publication_manifest.exists() or manifest.get("publication_policy") != policy["publication_policy"]:
             raise ValueError("The quote manifest differs from the active publication policy")
-        validate_newer_publication(bands_path, DATA / source_names["solver-results.json"])
+        validate_newer_publication(bands_path, source_data / source_names["solver-results.json"])
     listing, chains, pairs = load_pairs()
-    snapshots = load_chain_snapshots()
+    snapshots = load_chain_snapshots(source_data / "chain-snapshots.json")
     updated, figures, unknown, published = load_bands(pairs, bands_path, snapshots)
     # A partial publication can legitimately contain several snapshots on one chain.
     # Each figure retains its own time; the chain header must not imply a single block.
