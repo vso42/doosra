@@ -318,6 +318,40 @@ def fill(template, values):
     return re.sub(r"\{\{(\w+)\}\}", lambda match: values[match.group(1)], template)
 
 
+def validate_newer_publication(bands_path, results_path):
+    """Keep older numerical outputs out of the active newer-only publication."""
+    bands = json.loads(Path(bands_path).read_bytes())
+    results = json.loads(Path(results_path).read_bytes())
+    if results.get("publication_policy") != "confirmed_newer_only":
+        raise ValueError("Website publication requires confirmed newer solver results only")
+    expected_pairs = set()
+    for pair_id, pair in results["pairs"].items():
+        points = {}
+        for point in pair["cases"]:
+            provenance = point.get("provenance", {})
+            if not (provenance.get("new_numerical_solve") is True
+                    or point.get("validation_level") == "integer_budget_and_fresh_model_forward_replay"):
+                raise ValueError(f"Pair {pair_id}: older or imported solver input cannot be published")
+            points[(point["amount_in_raw"], point["modeled_amount_out_raw"])] = point
+        selected = {band: point for band, point in pair["model_bands"].items() if point is not None}
+        if selected:
+            expected_pairs.add(pair_id)
+        displayed = bands["pairs"].get(pair_id, {}).get("bands", {})
+        if set(displayed) != set(selected):
+            raise ValueError(f"Pair {pair_id}: selected newer bands differ from website inputs")
+        for band, point in selected.items():
+            if points.get((point["amount_in_raw"], point["modeled_amount_out_raw"])) != point:
+                raise ValueError(f"Pair {pair_id}: band {band} is not a confirmed newer case")
+            figure = displayed[band]
+            if (figure["amount_in_raw"], figure["amount_out_raw"], figure["slippage_bps"]) != (
+                    point["amount_in_raw"], point["modeled_amount_out_raw"], point["model_slippage_bps"]):
+                raise ValueError(f"Pair {pair_id}: displayed band {band} differs from the newer result")
+            if (figure["amount"], figure["usd"]) != (float(point["amount_in"]), float(point["amount_in_usd"])):
+                raise ValueError(f"Pair {pair_id}: displayed amounts differ from the newer result")
+    if set(bands["pairs"]) != expected_pairs:
+        raise ValueError("Website bands contain pairs without confirmed newer results")
+
+
 def build(bands_path=None, out=OUT):
     """Write the site for the bands file into `out`; returns what main() reports. tests/check_build.py calls it with
     a synthetic bands file and an output folder under .preview/."""
@@ -341,6 +375,14 @@ def build(bands_path=None, out=OUT):
             recorded = manifest["files"][name]
             if hashlib.sha256(raw).hexdigest() != recorded["sha256"] or len(raw) != recorded["bytes"]:
                 raise ValueError(f"{name}: differs from the complete solver publication manifest; rerun the exporter")
+    policy_path = DATA / "solver-publication-policy.json"
+    if canonical_publication and policy_path.exists():
+        policy = json.loads(policy_path.read_bytes())
+        if policy.get("publication_policy") != "confirmed_newer_only":
+            raise ValueError("Unknown website solver publication policy")
+        if not publication_manifest.exists() or manifest.get("publication_policy") != "confirmed_newer_only":
+            raise ValueError("Older solver publications cannot replace the newer-only website inputs")
+        validate_newer_publication(bands_path, DATA / source_names["solver-results.json"])
     listing, chains, pairs = load_pairs()
     snapshots = load_chain_snapshots()
     updated, figures, unknown, published = load_bands(pairs, bands_path, snapshots)
