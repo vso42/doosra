@@ -4,14 +4,12 @@
 docs/index.html is the whole page in one file: every liqind pair of data/pairs.json (scripts/fetch_liqind_pairs.py) as a
 pre-rendered row, the published execution amounts of data/bands.json in the band columns, src/style.css and src/app.js
 inlined. Each chain shows PAGE_SIZE pairs per page: the first page is visible in the HTML with its pager, app.js turns
-the pages. Below the bands, pairs with usable aggregator quotes saved in data/solver-results.json get a table of our
-quotes next to theirs. The fonts listed in fonts/fonts.json (scripts/fetch_fonts.py) are copied to docs/fonts/.
+the pages. The fonts listed in fonts/fonts.json (scripts/fetch_fonts.py) are copied to docs/fonts/.
 data/ stays local: besides the page, docs/ gets only data/figures.json, the numbers the page shows.
 bands.json is checked strictly (known bands and kinds, finite non-negative figures, amounts that never fall as the band
 widens); a pair id liqind no longer lists is reported and left out. Standard library only. Runs from the IDE Run button.
 """
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation, localcontext
 import gzip
 import hashlib
 import html
@@ -47,11 +45,6 @@ SELECT_DEFAULT = ".b{band}{{background-color:var(--soft)}}#hwrap .b{band}{{color
 CHEVRON = ('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
            'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>')
 SUFFIXES = ((1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "K"))
-# aggregators liqind saves quotes from, in column order
-AGGREGATORS = (("lifi", "LI.FI"), ("kyberswap", "KyberSwap"), ("velora", "Velora"), ("1inch", "1inch"), ("okx", "OKX"))
-# why a saved aggregator quote is left out, shown when hovering its dash
-NO_QUOTE = {"impact_cap": "hit its price-impact cap", "over_slippage_cap": "went over its slippage cap",
-            "refused": "refused to quote", "above_refusal": "refused a smaller size", "block_unknown": "has no recorded block"}
 
 
 def esc(text):
@@ -325,104 +318,6 @@ def fill(template, values):
     return re.sub(r"\{\{(\w+)\}\}", lambda match: values[match.group(1)], template)
 
 
-def decimal_value(value):
-    """A finite Decimal, or None for anything else (NaN, Infinity, junk)."""
-    try:
-        parsed = Decimal(str(value))
-    except (InvalidOperation, ValueError):
-        return None
-    return parsed if parsed.is_finite() else None
-
-
-def raw_units(raw, decimals):
-    """A token amount given in base units, as an exact Decimal; None unless both parts look right."""
-    if not isinstance(raw, str) or not raw.isdigit() or type(decimals) is not int or not 0 <= decimals <= 36:
-        return None
-    with localcontext() as context:
-        context.prec = len(raw) + 2
-        return Decimal(raw).scaleb(-decimals)
-
-
-def amount_text(value):
-    """(exact amount for a tooltip, amount rounded to cents for display; 4 significant digits below 1)."""
-    exact = format(value, "f")
-    exact = exact.rstrip("0").rstrip(".") if "." in exact else exact
-    return exact, f"{value:,.2f}" if value >= 1 else significant(float(value), 4)
-
-
-def comparison(records, chain_names):
-    """Our model quotes beside the aggregator quotes liqind saved for about the same input: one table per pair with at
-    least one usable saved quote, aggregators that never quoted it left out. Only full-input quotes of ours count.
-    Returns the section's HTML and the same numbers for docs/data/figures.json."""
-    tables, entries = [], []
-    for key in sorted(records, key=lambda k: int(k) if k.isdigit() else -1):
-        pair = records[key]
-        collateral, debt = str(pair.get("collateral", "")), str(pair.get("debt", ""))
-        input_decimals, output_decimals = pair.get("input_decimals"), pair.get("output_decimals")
-        ours = {}
-        for quote in pair.get("reviewed_quotes") or []:
-            size, slip = decimal_value(quote.get("requested_input_usd")), decimal_value(quote.get("slippage_pp"))
-            amount_in = raw_units(quote.get("amount_in_raw"), input_decimals)
-            amount_out = raw_units(quote.get("amount_out_raw"), output_decimals)
-            if (None not in (size, slip, amount_in, amount_out) and quote.get("quote_scope") == "integer_budget_model_replay"
-                    and quote.get("status") != "partial_no_full_quote"):
-                ours[size] = (quote, amount_in, amount_out, slip)
-        rows = []
-        for reference in pair.get("aggregator_references") or []:
-            size = decimal_value(reference.get("requested_model_input_usd"))
-            if size not in ours:
-                continue
-            theirs = {}
-            for item in reference.get("aggregators") or []:
-                amount_in, amount_out = raw_units(item.get("amount_in"), input_decimals), raw_units(item.get("amount_out"), output_decimals)
-                slip = decimal_value(item.get("common_reference_slippage_pp"))
-                usable = item.get("usable_saved_reference") is True and None not in (amount_in, amount_out, slip)
-                theirs[item.get("aggregator")] = (item, amount_in, amount_out, slip) if usable else (item, None, None, None)
-            if any(quote[3] is not None for quote in theirs.values()):
-                rows.append((size, ours[size], theirs))
-        if not rows:
-            continue
-        shown = [(name, label) for name, label in AGGREGATORS
-                 if any(theirs.get(name, (None,) * 4)[3] is not None for _, _, theirs in rows)]
-        body, numbers = [], []
-        for size, (quote, amount_in, amount_out, slip), theirs in rows:
-            exact_in, shown_in = amount_text(amount_in)
-            exact_out, shown_out = amount_text(amount_out)
-            cells = [f'<td><span title="{esc(exact_in + " " + collateral)}">{esc(shown_in + " " + collateral)}</span>'
-                     f'<small>{esc(usd(float(size)))}</small></td>',
-                     f'<td title="{esc(exact_out + " " + debt)}">{slip:.2f}%<small>{esc(shown_out + " " + debt)}</small></td>']
-            quotes = {}
-            for name, label in shown:
-                item, their_in, their_out, their_slip = theirs.get(name, (None,) * 4)
-                if their_slip is None:
-                    reason = NO_QUOTE.get(item.get("status"), "has no usable quote") if item else "has no saved quote"
-                    cells.append(f'<td class="na" title="{esc(label + " " + reason)}">—</td>')
-                    quotes[name] = None
-                    continue
-                block = item.get("quote_block") if type(item.get("quote_block")) is int else None
-                exact_their_in, _ = amount_text(their_in)
-                exact_their_out, shown_their_out = amount_text(their_out)
-                where = f" at block {block:,}" if block else ""
-                cells.append(f'<td title="{esc(f"for {exact_their_in} {collateral}{where}")}">{their_slip:.2f}%'
-                             f'<small>{esc(shown_their_out + " " + debt)}</small></td>')
-                quotes[name] = {"amount_in": exact_their_in, "amount_out": exact_their_out,
-                                "slippage_pct": str(round(their_slip, 4)), "block": block}
-            body.append("<tr>" + "".join(cells) + "</tr>")
-            numbers.append({"size_usd": str(size), "amount_in": exact_in,
-                            "doosra": {"amount_out": exact_out, "slippage_pct": str(round(slip, 4))}, "aggregators": quotes})
-        chain = chain_names.get(pair.get("chain"), str(pair.get("chain", "")))
-        tables.append(f'<div class="compare-pair" data-pair="{esc(key)}"><h3>{esc(chain)} · {esc(collateral)} → {esc(debt)}</h3>'
-                      '<div class="quote-scroll"><table class="quote-table"><thead><tr><th scope="col">Size</th>'
-                      '<th scope="col">doosra</th>' + "".join(f'<th scope="col">{esc(label)}</th>' for _, label in shown)
-                      + "</tr></thead><tbody>" + "".join(body) + "</tbody></table></div></div>")
-        entries.append({"pair_id": int(key), "chain": pair.get("chain"), "collateral": collateral, "debt": debt,
-                        "rows": numbers})
-    if not tables:
-        return "", []
-    # no visible heading or note above the tables; the label is for screen readers
-    return ('<section class="compare" aria-label="Aggregator quotes">' + "".join(tables) + "</section>"), entries
-
-
 def build(bands_path=None, out=OUT):
     """Write the site for the bands file into `out`; returns what main() reports. tests/check_build.py calls it with
     a synthetic bands file and an output folder under .preview/."""
@@ -449,10 +344,6 @@ def build(bands_path=None, out=OUT):
     listing, chains, pairs = load_pairs()
     snapshots = load_chain_snapshots()
     updated, figures, unknown, published = load_bands(pairs, bands_path, snapshots)
-    solver_source = DATA / source_names["solver-results.json"]
-    records = (json.loads(solver_source.read_text()).get("pairs", {})
-               if canonical_publication and solver_source.exists() else {})
-    compared, compared_numbers = comparison(records, {chain["slug"]: chain["name"] for chain in chains})
     modeled = any(figure.get("kind") == "modeled" for entry in json.loads(bands_path.read_text()).get("pairs", {}).values()
                   for figure in entry.get("bands", {}).values())
     faces, preloads, font_files = font_faces()
@@ -487,7 +378,6 @@ def build(bands_path=None, out=OUT):
         "header": header,
         "groups": "".join(group(chain, by_chain[chain["slug"]], figures, snapshots.get(chain["chain_id"])) for chain in chains),
         "legend": (MODEL_LEGEND if modeled else LEGEND) if figures else "",
-        "comparison": compared,
         "js": (SRC / "app.js").read_text().strip(),
     })
 
@@ -499,8 +389,8 @@ def build(bands_path=None, out=OUT):
             shutil.rmtree(stale) if stale.is_dir() else stale.unlink()
     (out / "data" / "figures.json").write_text(json.dumps({
         "updated": updated.isoformat() if updated else None,
-        "pairs": {str(pair_id): published[pair_id] for pair_id in sorted(published)},
-        "aggregator_comparison": compared_numbers}, ensure_ascii=False, separators=(",", ":")) + "\n")
+        "pairs": {str(pair_id): published[pair_id] for pair_id in sorted(published)}},
+        ensure_ascii=False, separators=(",", ":")) + "\n")
     for stale in (out / "fonts").iterdir():
         if stale.name not in font_files and stale.name != "OFL.txt":
             stale.unlink()

@@ -122,19 +122,6 @@ h1{margin:0 0 8px;font-size:32px;font-weight:500;letter-spacing:-.02em}
   background-color:var(--inset);color:var(--text);font-weight:500}
 .foot{margin:16px 0 0;font-size:12px;color:var(--muted);line-height:1.5}
 
-/* aggregator quotes next to ours: a plain table per pair that scrolls sideways inside its frame on narrow screens */
-.compare{margin-top:16px}
-.compare-pair h3{margin:24px 0 10px;font-size:15px;font-weight:500}
-.quote-scroll{overflow-x:auto;overscroll-behavior-x:contain;border:1px solid var(--line);border-radius:12px;
-  background-color:var(--surface);scrollbar-width:thin;scrollbar-color:var(--muted) transparent}
-.quote-table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
-.quote-table th,.quote-table td{padding:12px 20px;text-align:right;white-space:nowrap;vertical-align:top}
-.quote-table td{border-top:1px solid var(--line)}
-.quote-table th{font-family:var(--sans);font-weight:500;color:var(--muted)}
-.quote-table th:first-child,.quote-table td:first-child{text-align:left}
-.quote-table small{display:block;margin-top:2px;font-size:11px;color:var(--muted)}
-.quote-table .na{color:var(--muted)}
-
 @media (pointer:coarse){.pb{height:44px}}
 @media (max-width:720px){
   .top .in{padding:0 16px}
@@ -155,6 +142,5 @@ h1{margin:0 0 8px;font-size:32px;font-weight:500;letter-spacing:-.02em}
   .fold>span{left:12px}
   .pg{padding:10px 12px;gap:4px}
   .pb{min-width:32px;padding:0 4px}  /* nine buttons on one line in a 360px window */
-  .quote-table th,.quote-table td{padding:10px 12px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}

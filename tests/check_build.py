@@ -46,6 +46,12 @@ check("every liqind pair still listed", page.count('<div class="r" role="row"') 
 check("bands 1, 2, 3, 5 and 10 only, no More menu or more.json",
       re.findall(r'data-band="(\d+)"', page) == ["1", "2", "3", "5", "10"] and "band-more" not in page
       and not (PREVIEW / "sample-docs" / "more.json").exists(), str(re.findall(r'data-band="(\d+)"', page)))
+data_files = sorted(path.name for path in (PREVIEW / "sample-docs" / "data").iterdir())
+figures = json.loads((PREVIEW / "sample-docs" / "data" / "figures.json").read_text())
+check("data/ holds only figures.json: the update time and the figures shown",
+      data_files == ["figures.json"] and sorted(figures) == ["pairs", "updated"] and len(figures["pairs"]) == 3
+      and figures["pairs"]["6"]["bands"]["3"] == {"amount": 3000, "usd": 7200000, "kind": "measured"},
+      f"{data_files}, keys {sorted(figures)}")
 
 # pages: 10 pairs per chain shown, the rest of each chain's rows hidden until paged to
 per_chain = {}

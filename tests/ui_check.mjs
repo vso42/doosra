@@ -337,10 +337,8 @@ try {
   await run(`async () => { const s = document.getElementById("scroll"); s.scrollLeft = 0; s.dispatchEvent(new Event("scroll"));
     await (${FRAMES})(); return true; }`);
   await shot("phone-table");
-  // rows anywhere in the table are rendered and hit-testable right after a scroll there (the aggregator tables sit below
-  // it, so the table's end is not the page's end)
-  for (const [label, y] of [["middle of the page", "document.body.scrollHeight / 2"],
-    ["end of the table", 'document.getElementById("tbl").getBoundingClientRect().bottom + scrollY - innerHeight']]) {
+  // rows anywhere on the page are rendered and hit-testable right after a scroll there
+  for (const [label, y] of [["middle of the page", "document.body.scrollHeight / 2"], ["end of the page", "document.body.scrollHeight"]]) {
     const probe = await run(`async () => {
       window.scrollTo(0, ${y}); await (${FRAMES})();
       const top = Math.max(0, document.getElementById("hwrap").getBoundingClientRect().bottom);
