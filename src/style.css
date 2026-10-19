@@ -1,0 +1,162 @@
+/* doosra · Slippage bands. build.py inlines this file and adds the @font-face rules and the column tracks. */
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+:root{
+  --bg:#000;--surface:#000;--inset:#0a0a0a;--band:#0d0d0d;--line:#1f1f1f;--token:#161616;
+  --text:#ededed;--muted:#8f8f8f;--accent:#e3b04b;--accent-fg:#e3b04b;--soft:rgba(227,176,75,.12);
+  --hover:rgba(128,128,128,.12);
+  --sans:Geist,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+:root[data-theme=light]{
+  --bg:#f3f1ec;--surface:#fbfaf7;--inset:#eeebe4;--band:#eeebe4;--line:#ddd8ce;--token:#e6e1d6;
+  --text:#1b1c1f;--muted:#5d5f66;--accent:#886a2d;--accent-fg:#725826;--soft:rgba(227,176,75,.16);
+  color-scheme:light;
+}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{margin:0;min-height:100vh;background-color:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;
+  font-variant-numeric:tabular-nums;transition:background-color .2s,color .2s}
+button{font:inherit;color:inherit;cursor:pointer}
+input{font:inherit;appearance:none;-webkit-appearance:none}
+input::placeholder{color:inherit;opacity:.65}
+button:focus-visible,input:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+svg{flex:none}
+
+/* header */
+.top{border-bottom:1px solid var(--line)}
+.top .in{max-width:1200px;margin:0 auto;padding:0 24px;height:64px;display:flex;align-items:center;
+  justify-content:space-between;gap:16px}
+.brand{font-weight:600;font-size:18px;letter-spacing:-.02em}
+.tbtn{width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:8px;
+  border:1px solid var(--line);background-color:var(--surface);color:var(--text)}
+:root[data-theme=light] .sun,:root:not([data-theme=light]) .moon{display:none}
+
+main{max-width:1200px;margin:0 auto;padding:48px 24px 72px}
+h1{margin:0 0 8px;font-size:32px;font-weight:500;letter-spacing:-.02em}
+.lede{margin:0 0 32px;max-width:640px;color:var(--muted);line-height:1.5}
+
+/* filters */
+.filters{display:flex;flex-direction:column;gap:14px;padding:16px 20px;border:1px solid var(--line);
+  border-radius:12px;background-color:var(--surface);margin-bottom:24px}
+.frow{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.frow+.frow{padding-top:14px;border-top:1px solid var(--line)}
+.flabel{width:64px;color:var(--muted);font-size:13px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;min-width:0}
+#chains{flex:1 1 480px}
+#bands{flex:1 1 380px}
+.chip{height:44px;padding:0 14px;display:inline-flex;align-items:center;gap:8px;border-radius:8px;
+  border:1px solid var(--line);background-color:var(--inset);color:var(--text);font-weight:500}
+.chip .n{font-family:var(--mono);font-size:12px;font-weight:400;color:var(--muted)}
+.chip[aria-pressed=true]{border-color:var(--accent-fg);background-color:var(--soft);color:var(--accent-fg)}
+.chip[aria-pressed=true] .n{color:var(--accent-fg)}
+.ini{width:20px;height:20px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;flex:none;
+  font-family:var(--mono);font-size:11px;background-color:var(--token);color:var(--muted)}
+.bchip{width:64px;padding:0;justify-content:center;font-family:var(--mono)}
+.search{position:relative;flex:1 1 240px;max-width:320px}
+.search svg{position:absolute;left:13px;top:14px;pointer-events:none;color:var(--muted)}
+.search input{width:100%;height:44px;padding:0 12px 0 38px;border-radius:8px;border:1px solid var(--line);
+  background-color:var(--inset);color:var(--text);font-size:14px}
+
+/* depth card */
+.card{border:1px solid var(--line);border-radius:12px;overflow:clip;background-color:var(--surface)}
+.cardhead{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 24px;
+  padding:16px 20px;border-bottom:1px solid var(--line)}
+.cardhead h2{margin:0;font-size:16px;font-weight:500}
+.cardhead h2 span{color:var(--muted);font-weight:400;font-size:13px}
+.sum{color:var(--muted);font-size:12px}
+
+/* the table: one grid per row, every row on the same column tracks (build.py sets the track count). The selected
+   band is one tinted bar behind its column (.hl, placed by app.js), so changing band restyles three elements; before
+   app.js runs, <style id="sel"> tints the default column's cells instead. */
+.tbl{--pmin:272px;--bmin:108px;--pw:minmax(var(--pmin),1.4fr);--bw:minmax(var(--bmin),1fr);font-size:13px}
+.hwrap{position:sticky;top:0;z-index:2;overflow:hidden;background-color:var(--surface)}
+.scroll{overflow-x:auto;overscroll-behavior-x:contain}
+.scroll>.inner{position:relative;z-index:0}
+.hl{position:absolute;top:0;bottom:0;left:0;z-index:-1;background-color:var(--soft);pointer-events:none}
+.r{display:grid}
+.c{padding:14px 20px;border-bottom:1px solid var(--line);text-align:right;font-family:var(--mono);min-width:0;
+  align-content:center}
+.c.p{position:sticky;left:0;z-index:1;background-color:var(--surface);text-align:left;font-family:var(--sans);
+  font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.h .c{color:var(--muted);font-weight:500}
+.h .c.p{font-weight:400}
+.h .on{background-color:var(--soft);color:var(--accent-fg)}
+.c.na{color:var(--muted)}
+.c small{display:block;font-size:11px;color:var(--muted);margin-top:2px}
+.c.p i{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
+  vertical-align:middle;font-family:var(--mono);font-size:10px;font-style:normal;background-color:var(--token);
+  color:var(--muted)}
+.c.p i+i{margin:0 12px 0 -6px;box-shadow:0 0 0 2px var(--surface)}
+.c.p b{font-weight:inherit;color:var(--muted)}
+.rows>.r:hover>.c,.fold:hover{background-image:linear-gradient(var(--hover),var(--hover))}
+
+/* chain groups */
+.gh{background-color:var(--band);border-bottom:1px solid var(--line)}
+.fold{width:100%;min-height:48px;padding:0 20px;display:flex;align-items:center;border:0;
+  background-color:transparent;color:var(--text);text-align:left;font-weight:500}
+.fold:focus-visible{outline-offset:-2px}
+.fold>span{position:sticky;left:20px;display:inline-flex;align-items:center;gap:10px}
+.fold svg{color:var(--muted);transition:transform .15s}
+.fold[aria-expanded=false] svg{transform:rotate(-90deg)}
+.gn{color:var(--muted);font-weight:400;font-size:12px}
+.chain-note{color:var(--muted);font-weight:400;font-size:12px}
+.g.folded .rows,.g.folded .pgr{display:none}
+
+/* pages: a row under each chain's rows; the pager keeps to the visible width when the table scrolls sideways */
+.pgr{border-bottom:1px solid var(--line);background-color:var(--surface)}
+.pg{position:sticky;left:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px;width:max-content;
+  max-width:calc(100vw - 34px);padding:10px 20px}
+.pb{min-width:36px;height:36px;padding:0 8px;border-radius:8px;border:1px solid var(--line);
+  background-color:var(--inset);color:var(--text);font-family:var(--mono);font-size:13px;font-weight:500}
+.pb:not(:disabled):hover{background-image:linear-gradient(var(--hover),var(--hover))}
+.pb[aria-current=page]{border-color:var(--accent-fg);background-color:var(--soft);color:var(--accent-fg)}
+.pb:disabled{opacity:.4;cursor:default}
+.gap{min-width:18px;text-align:center;color:var(--muted);font-family:var(--mono)}
+.pr{margin-left:6px;color:var(--muted);font-family:var(--mono);font-size:12px;white-space:nowrap}
+
+.empty{padding:48px 20px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center}
+.empty p{margin:0;color:var(--muted)}
+.empty button{height:44px;padding:0 16px;border-radius:8px;border:1px solid var(--line);
+  background-color:var(--inset);color:var(--text);font-weight:500}
+.foot{margin:16px 0 0;font-size:12px;color:var(--muted);line-height:1.5}
+
+/* aggregator quotes next to ours: a plain table per pair that scrolls sideways inside its frame on narrow screens */
+.compare{margin-top:40px}
+.compare>h2{margin:0 0 8px;font-size:20px;font-weight:500}
+.compare-note{margin:0;max-width:720px;font-size:12px;line-height:1.6;color:var(--muted)}
+.compare-pair h3{margin:24px 0 10px;font-size:15px;font-weight:500}
+.quote-scroll{overflow-x:auto;overscroll-behavior-x:contain;border:1px solid var(--line);border-radius:12px;
+  background-color:var(--surface);scrollbar-width:thin;scrollbar-color:var(--muted) transparent}
+.quote-table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+.quote-table th,.quote-table td{padding:12px 20px;text-align:right;white-space:nowrap;vertical-align:top}
+.quote-table td{border-top:1px solid var(--line)}
+.quote-table th{font-family:var(--sans);font-weight:500;color:var(--muted)}
+.quote-table th:first-child,.quote-table td:first-child{text-align:left}
+.quote-table small{display:block;margin-top:2px;font-size:11px;color:var(--muted)}
+.quote-table .na{color:var(--muted)}
+
+@media (pointer:coarse){.pb{height:44px}}
+@media (max-width:720px){
+  .top .in{padding:0 16px}
+  main{padding:32px 16px 56px}
+  h1{font-size:28px}
+  .filters{padding:14px 16px}
+  /* 16 chains would wrap into nine rows: one row that swipes sideways instead, out to the card's edges */
+  #chains{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;margin:0 -16px;
+    padding:0 16px;scroll-padding:0 16px}
+  #chains::-webkit-scrollbar{display:none}
+  #chains .chip{flex:none}
+  .cardhead{padding:14px 16px}
+  .tbl{--pmin:150px;--bmin:96px;--pw:var(--pmin)}
+  .c{padding:12px}
+  .c.p{white-space:normal}
+  .c.p i{display:none}
+  .fold{padding:0 12px}
+  .fold>span{left:12px}
+  .pg{padding:10px 12px;gap:4px}
+  .pb{min-width:32px;padding:0 4px}  /* nine buttons on one line in a 360px window */
+  .quote-table th,.quote-table td{padding:10px 12px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}

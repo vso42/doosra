@@ -1,0 +1,4 @@
+# Inputs and run outputs stay local; the site publishes docs/ (the page and data/figures.json).
+/data/
+.preview/
+__pycache__/

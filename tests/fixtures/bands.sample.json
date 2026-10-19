@@ -1,0 +1,33 @@
+{
+ "_note": "SYNTHETIC test data for tests/check_build.py and tests/ui_data_check.mjs: round made-up figures, never published. Real figures go in data/bands.json.",
+ "updated": "2026-10-18T08:00:00Z",
+ "pairs": {
+  "6": {
+   "block": 26211593,
+   "bands": {
+    "1": {"amount": 1000, "usd": 2400000, "kind": "interpolated"},
+    "2": {"amount": 2000, "usd": 4800000, "kind": "interpolated"},
+    "3": {"amount": 3000, "usd": 7200000, "kind": "measured"},
+    "5": {"amount": 5000, "usd": 12000000, "kind": "interpolated"},
+    "10": {"amount": 50000, "usd": 120000000, "kind": "at_least"}
+   }
+  },
+  "810": {
+   "bands": {
+    "1": {"amount": 0.5, "usd": 50000, "kind": "below_min"},
+    "2": {"amount": 1.25, "usd": 125000, "kind": "interpolated"},
+    "5": {"amount": 12.5, "usd": 1250000, "kind": "interpolated"}
+   }
+  },
+  "681": {
+   "bands": {
+    "2": {"amount": 0.012346, "usd": 1234.5, "kind": "interpolated"}
+   }
+  },
+  "999999": {
+   "bands": {
+    "1": {"amount": 1, "usd": 1, "kind": "measured"}
+   }
+  }
+ }
+}
